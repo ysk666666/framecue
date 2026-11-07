@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "帧刻 FrameCue"
+  },
+  "extDescription": {
+    "message": "为白名单网站提供逐帧快捷键、实测帧率、HLS 检测与站点规则管理。"
+  }
+}

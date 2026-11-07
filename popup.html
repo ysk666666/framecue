@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>帧刻 FrameCue</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="panel">
+      <header class="header">
+        <div>
+          <h1>帧刻 <span class="latin">FrameCue</span></h1>
+          <p class="subtitle">逐帧审片 · 实测帧率 · HLS</p>
+        </div>
+        <label class="switch" title="启用或停用全部功能">
+          <input id="enabled" type="checkbox" role="switch">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-label">总开关</span>
+        </label>
+      </header>
+
+      <section class="status-block" aria-live="polite">
+        <div class="status-row">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">正在连接当前页面...</span>
+        </div>
+        <div class="frame-readout" id="frame-readout" hidden></div>
+        <div class="time-readout" id="time-readout"></div>
+      </section>
+
+      <section id="site-section" class="site-section" hidden>
+        <div class="section-heading">
+          <span>当前网站</span>
+          <span class="hint" id="site-host"></span>
+        </div>
+        <div class="site-actions">
+          <button type="button" id="site-toggle" class="text-button primary-text">在此网站启用</button>
+          <button type="button" id="site-block" class="text-button">永不启用</button>
+        </div>
+        <p class="hint" id="site-permission-hint">加入白名单并授权后，页面才会加载扩展。</p>
+      </section>
+
+      <section class="controls-section">
+        <div class="section-heading">
+          <span>帧率</span>
+          <span class="hint" id="fps-source">自动读取</span>
+        </div>
+        <div class="segmented" role="group" aria-label="帧率模式">
+          <button type="button" data-rate-mode="auto" class="segment">自动</button>
+          <button type="button" data-rate-mode="custom" class="segment">固定</button>
+          <label class="fps-input-wrap">
+            <input id="fps" type="number" min="1" max="240" step="0.001" inputmode="decimal" aria-label="固定帧率">
+            <span>fps</span>
+          </label>
+        </div>
+        <p class="hint">自动优先实测；固定模式适合已知帧率。</p>
+      </section>
+
+      <section class="transport" aria-label="播放控制">
+        <button type="button" id="go-start" class="icon-button" title="跳到片头（Option+←）" aria-label="跳到片头">|&lt;</button>
+        <button type="button" id="step-back" class="icon-button" title="后退一帧（←）" aria-label="后退一帧">&lt;</button>
+        <button type="button" id="play-pause" class="icon-button primary" title="播放或暂停（空格）" aria-label="播放或暂停">▶</button>
+        <button type="button" id="step-forward" class="icon-button" title="前进一帧（→）" aria-label="前进一帧">&gt;</button>
+        <button type="button" id="go-end" class="icon-button" title="跳到片尾（Option+→）" aria-label="跳到片尾">|&gt;</button>
+      </section>
+
+      <section class="shortcuts">
+        <div class="section-heading"><span>快捷键</span></div>
+        <dl>
+          <div><dt><kbd>Space</kbd></dt><dd>播放 / 暂停</dd></div>
+          <div><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>停止并后退 / 前进一帧</dd></div>
+          <div><dt>按住 <kbd>→</kbd></dt><dd>1× 播放并跟随页面音量</dd></div>
+          <div><dt><kbd data-shortcut="edge:0">⌥←</kbd> <kbd data-shortcut="edge:1">⌥→</kbd></dt><dd>片头 / 片尾</dd></div>
+          <div><dt><kbd data-shortcut="rateDown">⌘←</kbd> <kbd data-shortcut="rateUp">⌘→</kbd></dt><dd>降低 / 提高播放速度</dd></div>
+          <div><dt><kbd>F</kbd></dt><dd>播放器全屏 / 退出全屏</dd></div>
+        </dl>
+      </section>
+
+      <footer class="footer">
+        <button type="button" id="open-options" class="link-button">全部设置</button>
+      </footer>
+    </main>
+
+    <script src="src/frame-math.js"></script>
+    <script src="src/site-rules.js"></script>
+    <script src="src/permissions.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

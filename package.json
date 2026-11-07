@@ -1,0 +1,29 @@
+{
+  "name": "framecue",
+  "version": "1.0.0",
+  "author": "ysk666666",
+  "description": "A browser extension for frame-accurate video review on allowlisted sites.",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_GITHUB_USERNAME/framecue.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_GITHUB_USERNAME/framecue/issues"
+  },
+  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/framecue#readme",
+  "scripts": {
+    "test": "node --test test/frame-math.test.js test/site-rules.test.js test/permissions.test.js",
+    "test:e2e": "node --test --test-timeout=60000 test/e2e.test.js",
+    "build": "bash scripts/build.sh",
+    "package": "bash scripts/build.sh"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
+  }
+}

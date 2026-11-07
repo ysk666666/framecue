@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "FrameCue — Frame-by-Frame Video Review"
+  },
+  "extDescription": {
+    "message": "Frame-accurate stepping, measured frame rate and HLS detection for video review, only on sites you allow."
+  }
+}

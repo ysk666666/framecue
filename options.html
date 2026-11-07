@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>帧刻 FrameCue - 站点规则</title>
+    <link rel="stylesheet" href="popup.css">
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body class="options-body">
+    <main class="options-panel">
+      <header class="options-header">
+        <div>
+          <h1>帧刻 <span class="latin">FrameCue</span></h1>
+          <p class="subtitle">网站黑白名单与逐帧设置</p>
+        </div>
+        <span class="version" id="version"></span>
+      </header>
+
+      <section class="option-card">
+        <div class="section-heading"><span>生效范围</span></div>
+        <p class="option-description">只有白名单中且已授权的网站才会加载扩展；移出白名单时会同时撤销该站点权限。名单外网站不会被注入脚本，也不会拦截快捷键。</p>
+      </section>
+
+      <section class="option-card">
+        <div class="section-heading">
+          <label for="allowlist">白名单</label>
+          <span class="hint">每行一个域名，支持 *.example.com</span>
+        </div>
+        <textarea id="allowlist" rows="6" placeholder="video.example.com&#10;*.example.org"></textarea>
+      </section>
+
+      <section class="option-card">
+        <div class="section-heading">
+          <label for="blocklist">黑名单</label>
+          <span class="hint">优先于白名单</span>
+        </div>
+        <textarea id="blocklist" rows="6" placeholder="www.youtube.com"></textarea>
+      </section>
+
+      <section class="option-card compact-card">
+        <label class="check-line">
+          <input type="checkbox" id="measure-frame-rate">
+          <span>
+            <strong>播放时实测帧率</strong>
+            <small>支持 requestVideoFrameCallback 的浏览器中自动校准</small>
+          </span>
+        </label>
+        <div class="choice-heading">
+          <strong>页面帧号浮层</strong>
+          <small>可拖动；齿轮按钮直达设置</small>
+        </div>
+        <div class="segmented hud-mode-segments" role="group" aria-label="页面浮层显示方式">
+          <button type="button" class="segment" data-hud-mode="auto" aria-pressed="false">自动</button>
+          <button type="button" class="segment" data-hud-mode="always" aria-pressed="false">常显示</button>
+          <button type="button" class="segment" data-hud-mode="off" aria-pressed="false">关闭</button>
+        </div>
+        <p class="option-description hud-mode-help">自动：仅在扩展的逐帧、播放或长按操作后显示，3 秒后隐藏；长按 → 期间持续显示帧号与音量；正常播放不会显示。常显示：有视频时一直显示。</p>
+      </section>
+
+      <section class="option-card">
+        <div class="section-heading"><span>站点权限</span></div>
+        <div class="permission-row">
+          <span>
+            <strong id="permission-state">检查中</strong>
+            <small id="permission-detail">仅在把新站点加入白名单时请求</small>
+          </span>
+          <span class="permission-actions">
+            <button type="button" id="grant-button" class="text-button primary-text" hidden>授权白名单站点</button>
+            <button type="button" id="permission-button" class="text-button">撤销全部站点权限</button>
+          </span>
+        </div>
+      </section>
+
+      <footer class="options-footer">
+        <span id="save-state" aria-live="polite"></span>
+        <button type="button" id="save-button" class="save-button">保存设置</button>
+      </footer>
+    </main>
+
+    <script src="src/frame-math.js"></script>
+    <script src="src/site-rules.js"></script>
+    <script src="src/permissions.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

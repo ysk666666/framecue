@@ -1,0 +1,6 @@
+node_modules/
+test/.chrome-profile/
+.DS_Store
+*.crx
+*.pem
+dist/
