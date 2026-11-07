@@ -16,7 +16,9 @@
   "scripts": {
     "test": "node --test test/frame-math.test.js test/site-rules.test.js test/permissions.test.js",
     "test:e2e": "node --test --test-timeout=60000 test/e2e.test.js",
+    "test:e2e:firefox": "node --test --test-timeout=90000 test/e2e-firefox.test.js",
     "build": "bash scripts/build.sh",
+    "build:firefox": "bash scripts/build-firefox.sh",
     "package": "bash scripts/build.sh"
   },
   "type": "commonjs",

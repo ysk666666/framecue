@@ -1,4 +1,10 @@
-importScripts('site-rules.js', 'frame-math.js', 'permissions.js');
+// Chrome runs the background context as a service worker, where importScripts
+// is available. Firefox MV3 backgrounds are event pages instead, so the
+// Firefox manifest lists these files in background.scripts and they are
+// already present on the global object.
+if (typeof importScripts === 'function') {
+  importScripts('browser-api.js', 'site-rules.js', 'frame-math.js', 'permissions.js');
+}
 
 const STORAGE_KEY = 'frameCueSettings';
 const pendingGrantProcessing = new Set();
@@ -76,7 +82,7 @@ async function activateGrantedSite(grant) {
     allowlist: rules.normalizeRuleList(settings.allowlist.concat(grant.hostname)),
     blocklist: settings.blocklist.filter((rule) => !rules.ruleMatchesHost(rule, grant.hostname)),
   });
-  await chrome.storage.sync.set({ [STORAGE_KEY]: updated });
+  await globalThis.FrameCueApi.storage.set('sync', { [STORAGE_KEY]: updated });
 
   const tabId = Number(grant.tabId);
   if (Number.isInteger(tabId) && tabId >= 0) {

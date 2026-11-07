@@ -4,6 +4,7 @@
   const api = globalThis.FrameCueMath;
   const rules = globalThis.FrameCueSiteRules;
   const permissions = globalThis.FrameCuePermissions;
+  const browserApi = globalThis.FrameCueApi;
   const STORAGE_KEY = 'frameCueSettings';
   const IS_MAC = /mac/i.test(
     (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '',
@@ -41,7 +42,7 @@
 
   async function saveSettings(nextSettings = settings) {
     settings = api.normalizeSettings(nextSettings);
-    await chrome.storage.sync.set({ [STORAGE_KEY]: settings });
+    await browserApi.storage.set('sync', { [STORAGE_KEY]: settings });
     return settings;
   }
 
@@ -211,7 +212,7 @@
   }
 
   function refreshStatus() {
-    if (!activeTab || /^(chrome|chrome-extension|about|file):/i.test(activeTab.url || '')) {
+    if (!activeTab || /^(chrome|chrome-extension|moz-extension|about|file):/i.test(activeTab.url || '')) {
       renderStatus(null);
       return;
     }
@@ -336,10 +337,15 @@
       origin: hostOrigin,
       tabId: activeTab.id,
     };
+    // Firefox only allows permissions.request while the click is still being
+    // handled, so the request must be issued before the first await. The
+    // pending grant is written afterwards as a fallback for the background
+    // permissions.onAdded path.
+    const requestPromise = permissions.requestAccess(hostOrigin);
     await permissions.savePendingGrant(grant);
     let granted = false;
     try {
-      granted = await permissions.requestAccess(hostOrigin);
+      granted = await requestPromise;
     } catch (_) {
       granted = false;
     }

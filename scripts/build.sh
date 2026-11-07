@@ -14,8 +14,10 @@ trap cleanup EXIT
 
 mkdir -p "$OUT"
 
-# dist is an output directory, not an unpacked copy of the extension.
-find "$OUT" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+# dist is a shared output directory: the Firefox build writes dist/firefox and
+# dist/framecue-firefox-*.zip alongside the Chrome package, so only remove the
+# Chrome artifacts this script owns.
+rm -f "$OUT"/framecue-v*.zip
 
 # The staging directory itself becomes the ZIP root. Keep only the files that
 # Chrome needs at runtime; development metadata does not belong in the package.

@@ -6,8 +6,16 @@
   const PENDING_GRANT_MAX_AGE_MS = 10 * 60 * 1000;
   const CONTENT_FILES = ['src/site-rules.js', 'src/frame-math.js', 'src/content.js'];
 
+  function browserApi() {
+    const api = root.FrameCueApi;
+    if (!api) {
+      throw new Error('FrameCue: browser API bridge is missing');
+    }
+    return api;
+  }
+
   function pendingGrantArea() {
-    return chrome.storage.session || chrome.storage.local;
+    return chrome.storage.session ? 'session' : 'local';
   }
 
   async function savePendingGrant(grant) {
@@ -15,12 +23,12 @@
       ...grant,
       createdAt: Date.now(),
     };
-    await pendingGrantArea().set({ [PENDING_GRANT_KEY]: value });
+    await browserApi().storage.set(pendingGrantArea(), { [PENDING_GRANT_KEY]: value });
     return value;
   }
 
   async function readPendingGrant() {
-    const result = await pendingGrantArea().get(PENDING_GRANT_KEY);
+    const result = await browserApi().storage.get(pendingGrantArea(), PENDING_GRANT_KEY);
     const grant = result && result[PENDING_GRANT_KEY];
     if (!grant || !grant.hostname || !grant.origin) {
       return null;
@@ -34,7 +42,7 @@
   }
 
   async function clearPendingGrant() {
-    await pendingGrantArea().remove(PENDING_GRANT_KEY);
+    await browserApi().storage.remove(pendingGrantArea(), PENDING_GRANT_KEY);
   }
 
   function originMatchesGrant(origin, grant) {
@@ -76,15 +84,15 @@
   }
 
   async function grantedSiteOrigins() {
-    const all = await chrome.permissions.getAll();
-    return (all.origins || []).filter((origin) => /^(\*|https?):\/\//.test(origin)
+    const all = await browserApi().permissions.getAll();
+    return ((all && all.origins) || []).filter((origin) => /^(\*|https?):\/\//.test(origin)
       && !OPTIONAL_ORIGINS.includes(origin));
   }
 
   async function missingOriginsForRules(ruleList) {
     const missing = [];
     for (const origin of originsForRules(ruleList)) {
-      if (!(await chrome.permissions.contains({ origins: [origin] }))) {
+      if (!(await browserApi().permissions.contains([origin]))) {
         missing.push(origin);
       }
     }
@@ -96,25 +104,21 @@
     const required = new Set(originsForRules(ruleList));
     const stale = (await grantedSiteOrigins()).filter((origin) => !required.has(origin));
     if (stale.length) {
-      await chrome.permissions.remove({ origins: stale });
+      await browserApi().permissions.remove(stale);
     }
     return stale;
   }
 
   async function requestAccess(origin) {
-    return chrome.permissions.request({
-      origins: origin ? [origin] : OPTIONAL_ORIGINS,
-    });
+    return browserApi().permissions.request(origin ? [origin] : OPTIONAL_ORIGINS);
   }
 
   async function containsAccess(origin) {
-    return chrome.permissions.contains({
-      origins: origin ? [origin] : OPTIONAL_ORIGINS,
-    });
+    return browserApi().permissions.contains(origin ? [origin] : OPTIONAL_ORIGINS);
   }
 
   async function reinject(tabId) {
-    await chrome.scripting.executeScript({
+    await browserApi().scripting.executeScript({
       target: { tabId },
       files: CONTENT_FILES,
     }).catch(() => {});

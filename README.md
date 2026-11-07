@@ -1,8 +1,8 @@
 # 帧刻 FrameCue
 
-帧刻是一款面向视频审阅的 Chrome 扩展。它为白名单网站提供逐帧前进、逐帧后退、实测帧率和 HLS 页面识别，适合检查运动模糊、字幕跳动、渲染瑕疵和单帧异常。
+帧刻是一款面向视频审阅的 Chrome/Firefox 扩展。它为白名单网站提供逐帧前进、逐帧后退、实测帧率和 HLS 页面识别，适合检查运动模糊、字幕跳动、渲染瑕疵和单帧异常。
 
-FrameCue is a Chrome extension for frame-accurate video review on sites you explicitly allow.
+FrameCue is a Chrome/Firefox extension for frame-accurate video review on sites you explicitly allow.
 
 ## 特性
 
@@ -20,9 +20,69 @@ FrameCue is a Chrome extension for frame-accurate video review on sites you expl
 - 在弹窗中授权站点后，自动加入白名单并立即生效
 - 站点白名单持久化保存；移出白名单或加入黑名单时同步撤销对应站点权限
 
-## 重要：按站点启用
+## 本地安装
 
-**没有任何网站默认生效。** 打开目标网站后，点击工具栏中的帧刻图标，再点击“在此网站启用”并确认 Chrome 的站点访问授权即可。授权成功后，扩展会自动把该域名加入白名单并立即注入页面脚本，不需要再去设置页添加一次。
+Chrome 与 Firefox 各自加载一份本地构建，两者功能一致，只是入口和最低版本要求不同。
+
+### Chrome
+
+最低版本 **Chrome 102**。
+
+1. 打开 `chrome://extensions/`。
+2. 开启“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择本项目根目录。
+
+### Firefox
+
+最低版本 **Firefox 116**。
+
+先生成 Firefox 专用构建：
+
+```bash
+npm run build:firefox
+```
+
+生成结果：
+
+- `dist/firefox/`：已解压目录，用于本地载入
+- `dist/framecue-firefox-v<version>.zip`：对应的发布包
+
+再载入扩展：
+
+1. 打开 `about:debugging#/runtime/this-firefox`。
+2. 点击“临时载入附加组件”。
+3. 选择 `dist/firefox/manifest.json`。
+
+临时附加组件在关闭 Firefox 后会被移除，重新打开需要再次载入；也可以用 `web-ext` 启动：
+
+```bash
+npx web-ext run --source-dir dist/firefox
+```
+
+构建会写入附加组件 ID，默认值为 `framecue@framecue.local`；如果要发布到 AMO，请覆盖成自己的 ID：
+
+```bash
+FRAMECUE_FIREFOX_ID=you@example.com npm run build:firefox
+```
+
+### 发布包
+
+运行 `npm run build` 生成 Chrome 发布包 `dist/framecue-v<version>.zip`，运行 `npm run build:firefox` 生成
+Firefox 发布包 `dist/framecue-firefox-v<version>.zip`，两者的 ZIP 根目录都是 `manifest.json`，没有额外的顶层文件夹。
+ZIP 只包含运行时需要的文件，`package.json`、测试和文档不会进入安装包。
+
+浏览器不能直接加载 ZIP。要验证发布包，请先把 ZIP 解压到任意临时目录，再按上面的步骤加载解压后的根目录。
+
+## 使用方法
+
+**没有任何网站默认生效。** 打开目标视频网站后，点击工具栏中的帧刻图标，再点击“在此网站启用”并确认浏览器的站点访问授权即可。授权成功后，扩展会自动把该域名加入白名单并立即注入页面脚本，不需要再去设置页添加一次。
+
+启用后：
+
+- 页面上存在视频时，`Space`、`←`、`→` 等快捷键开始生效；没有视频时不拦截任何按键。
+- 帧号浮层显示当前帧、帧率和音量，可拖动位置；点击浮层齿轮按钮或在设置页修改白名单、黑名单、帧率与总开关。
+- 在弹窗中再次点击可移出白名单，或把站点加入黑名单，两种操作都会同步撤销该站点的访问权限。
 
 名单外网站：
 
@@ -30,34 +90,28 @@ FrameCue is a Chrome extension for frame-accurate video review on sites you expl
 - 不会注入内容脚本
 - 不会拦截空格或方向键
 
-## 安装
+## 工作原理
 
-1. 打开 `chrome://extensions/`。
-2. 开启“开发者模式”。
-3. 点击“加载已解压的扩展程序”。
-4. 选择本项目根目录。
-5. 打开视频站点页面，点击工具栏中的帧刻图标。
-6. 点击“在此网站启用”并确认站点访问授权。
-
-运行 `npm run build` 生成的发布包 `dist/framecue-v<version>.zip` 的根目录就是 `manifest.json`，没有额外的顶层文件夹。ZIP 只包含 Chrome
-运行时需要的文件；`package.json`、测试和文档不会进入安装包。
-
-浏览器不能直接加载 ZIP。要在本地调试，请直接加载项目根目录；要验证发布包，请先把 ZIP 解压到任意临时目录，
-再加载解压后的根目录。
+- **按站点启用。** 安装时不请求任何站点权限，白名单为空。只有用户在弹窗中点击“在此网站启用”并确认后，扩展才获得该站点的访问权限，把域名写入白名单并注入内容脚本。
+- **只接管视频页面。** 内容脚本只在白名单站点、且页面存在 `<video>` 时生效并接管按键；否则完全放行，不影响浏览器自带快捷键。
+- **逐帧跳转。** 按下 `←` / `→` 时先暂停视频，再按帧时长设置媒体元素的 `currentTime` 前进或后退一帧。帧时长来自自动测量的实际呈现帧、视频元数据，或用户指定的固定帧率。
+- **帧率测量。** 自动模式在播放时统计实际呈现帧得到帧率；固定帧率模式始终以设定值为准，适合已知帧率的审片任务。
+- **HLS 检测。** 通过 Resource Timing 观察页面加载的 `.m3u8` 请求并检查媒体元素 `src`，不改写页面的 `fetch` / `XMLHttpRequest`，只做识别与标注。
+- **权限跟随名单。** 移出白名单或加入黑名单时，扩展同步撤销对应站点的访问权限；关闭总开关后不再接管按键。
 
 ## 快捷键
 
-| 操作 | macOS | Windows / Linux |
-| --- | --- | --- |
-| 播放 / 暂停 | `Space` | `Space` |
-| 停止播放并后退一帧 | `←` | `←` |
-| 停止播放并前进一帧 | `→` | `→` |
-| 1× 播放，音量跟随页面；松开暂停 | 按住 `→` | 按住 `→` |
-| 跳到片头 | `Option+←` 或 `Home` | `Home` |
-| 跳到片尾 | `Option+→` 或 `End` | `End` |
-| 降低播放速度 | `Command+←` | `Ctrl+←` |
-| 提高播放速度 | `Command+→` | `Ctrl+→` |
-| 播放器全屏 / 退出全屏 | `F` | `F` |
+| 操作                             | macOS                     | Windows / Linux |
+| -------------------------------- | ------------------------- | --------------- |
+| 播放 / 暂停                      | `Space`                 | `Space`       |
+| 停止播放并后退一帧               | `←`                    | `←`          |
+| 停止播放并前进一帧               | `→`                    | `→`          |
+| 1× 播放，音量跟随页面；松开暂停 | 按住 `→`               | 按住 `→`     |
+| 跳到片头                         | `Option+←` 或 `Home` | `Home`        |
+| 跳到片尾                         | `Option+→` 或 `End`  | `End`         |
+| 降低播放速度                     | `Command+←`            | `Ctrl+←`     |
+| 提高播放速度                     | `Command+→`            | `Ctrl+→`     |
+| 播放器全屏 / 退出全屏            | `F`                     | `F`           |
 
 快捷键只在白名单站点、且页面上存在视频时生效；输入框内不会拦截。`Command/Ctrl+F` 页内查找与 `Alt+←/→` 前进后退保持浏览器默认行为。
 
@@ -90,7 +144,7 @@ HLS 检测通过 Resource Timing（`PerformanceObserver`）观察页面加载的
 
 安装时不会请求任何站点权限，也不会出现“读取浏览记录”提示。扩展不读取、上传或保存视频内容。
 
-设置保存在 `chrome.storage.sync` 中，会随 Chrome 账号同步；站点权限不会同步。在新设备上，白名单站点需要在弹窗中点击“授权此网站”，或在设置页点击“授权白名单站点”。
+设置保存在浏览器同步存储 `chrome.storage.sync` 中，会随登录的浏览器账号同步；站点权限不会同步。在新设备上，白名单站点需要在弹窗中点击“授权此网站”，或在设置页点击“授权白名单站点”。
 
 ## 开发
 
@@ -116,10 +170,26 @@ ffmpeg -y -f lavfi -i 'testsrc2=size=640x360:rate=30' \
 
 端到端测试会启动 Chromium、加载扩展，验证白名单外不注入、授权后自动入白名单、精确落帧、HLS 检测以及弹窗和设置页布局。
 
+Firefox 端到端测试通过 WebDriver BiDi 启动真实的无头 Firefox，临时载入 Firefox 构建，验证白名单页面注入内容脚本以及
+`→` 精确前进一帧：
+
+```bash
+npm run test:e2e:firefox
+```
+
+该测试需要 Firefox 116+ 与 Node.js 22+（内置 WebSocket 客户端）；缺少任一条件时会自动跳过。Firefox 不在默认路径时，
+用 `FRAMECUE_FIREFOX` 指向可执行文件。
+
 生成发布包：
 
 ```bash
 npm run build
+```
+
+同时生成 Chrome 与 Firefox 两个发布包：
+
+```bash
+npm run build && npm run build:firefox
 ```
 
 ## 项目结构
@@ -127,6 +197,7 @@ npm run build
 ```text
 manifest.json         扩展清单
 src/background.js     按白名单注入与站点路由
+src/browser-api.js    chrome.* 回调 API 到 Promise 的桥接
 src/content.js        播放器控制、帧计算、浮层
 src/frame-math.js     帧时间与帧率算法
 src/site-rules.js     域名与白名单规则
@@ -134,6 +205,7 @@ src/permissions.js    可选站点权限与白名单同步
 _locales/             扩展名称与描述（en / zh_CN）
 popup.html/js        工具栏弹窗
 options.html/js      站点规则页
+scripts/              打包脚本（build.sh / build-firefox.sh）
 test/                 单元测试与端到端测试
 ```
 

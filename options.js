@@ -4,6 +4,7 @@
   const api = globalThis.FrameCueMath;
   const rules = globalThis.FrameCueSiteRules;
   const permissions = globalThis.FrameCuePermissions;
+  const browserApi = globalThis.FrameCueApi;
   const STORAGE_KEY = 'frameCueSettings';
 
   const elements = {
@@ -63,13 +64,13 @@
     if (!origins.length) {
       return Promise.resolve(true);
     }
-    return chrome.permissions.request({ origins }).catch(() => false);
+    return browserApi.permissions.request(origins).catch(() => false);
   }
 
   function refreshOpenTabs() {
     chrome.tabs.query({}, (tabs) => {
       (tabs || []).forEach((tab) => {
-        if (!tab.id || /^(chrome|chrome-extension|about):/i.test(tab.url || '')) {
+        if (!tab.id || /^(chrome|chrome-extension|moz-extension|about):/i.test(tab.url || '')) {
           return;
         }
         chrome.tabs.sendMessage(tab.id, { type: 'framecue-command', command: 'refresh-site' }, () => {
@@ -96,7 +97,7 @@
     const next = collectSettings();
     const granted = await requestAllowlistAccess(next.allowlist);
     settings = next;
-    await chrome.storage.sync.set({ [STORAGE_KEY]: settings });
+    await browserApi.storage.set('sync', { [STORAGE_KEY]: settings });
     await permissions.revokeUnlistedOrigins(settings.allowlist).catch(() => {});
     render();
     await renderPermission();
@@ -109,10 +110,11 @@
 
   elements.permissionButton.addEventListener('click', async () => {
     try {
-      const all = await chrome.permissions.getAll();
-      const origins = (all.origins || []).filter((origin) => origin !== '*://*/*' && !origin.startsWith('chrome'));
+      const all = await browserApi.permissions.getAll();
+      const origins = ((all && all.origins) || [])
+        .filter((origin) => origin !== '*://*/*' && !/^(chrome|moz)-extension:/.test(origin));
       if (origins.length) {
-        await chrome.permissions.remove({ origins });
+        await browserApi.permissions.remove(origins);
       }
     } catch (_) {
       // The permission prompt can be dismissed by the user.
