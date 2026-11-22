@@ -33,9 +33,6 @@
   const HLS_URL = /\.m3u8(?:[?#]|$)/i;
   const TAKEOVER_EVENT = 'framecue:takeover';
   const INSTANCE_TOKEN = Math.random().toString(36).slice(2);
-  const IS_MAC = /mac/i.test(
-    (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '',
-  );
   const HUD_KEY_STEP_PX = 10;
 
   let disposed = false;
@@ -50,7 +47,6 @@
   let pendingFrameOffset = 0;
   let lastMedia = null;
   let isSeeking = false;
-  let fastForwardMultiplier = 1;
   let measuredFps = null;
   let measuredFpsAt = 0;
   let frameCallbackId = null;
@@ -753,38 +749,19 @@
       frameCount,
       durationComplete,
     );
-    element.querySelector('.framecue-time').textContent = `${api.formatClock(media.currentTime)} · 左右键逐帧`;
+    element.querySelector('.framecue-time').textContent = `${api.formatClock(media.currentTime)} · , / . 逐帧`;
     element.querySelector('.framecue-note').textContent = note;
   }
 
-  function pauseMedia(media) {
+  function pauseMedia(media, preserveHold = false) {
     if (!media.paused) {
       media.pause();
-      if (holdPlay) {
+      if (holdPlay && !preserveHold) {
         const state = holdPlay;
         holdPlay = null;
         clearTimeout(state.timer);
       }
     }
-  }
-
-  function togglePlayback() {
-    const media = getActiveVideo();
-    if (!media) {
-      showNotice('当前页面没有可控制的视频');
-      return;
-    }
-    if (media.paused) {
-      if (holdPlay) {
-        const state = holdPlay;
-        holdPlay = null;
-        clearTimeout(state.timer);
-      }
-      media.play().catch(notifyPlayBlocked);
-    } else {
-      media.pause();
-    }
-    updateVisibleHud();
   }
 
   function queueFrameAction(action) {
@@ -801,7 +778,7 @@
    * Hold rapid key presses in one short batch. Each press adds a frame offset,
    * then the queue seeks once to the final frame boundary.
    */
-  async function stepFrameBatched(direction) {
+  async function stepFrameBatched(direction, preserveHold = false) {
     const media = getActiveVideo();
     if (!media) {
       showNotice('当前页面没有可控制的视频');
@@ -810,7 +787,7 @@
 
     const rateInfo = getFrameRateInfo(media);
     const wasPlaying = !media.paused;
-    pauseMedia(media);
+    pauseMedia(media, preserveHold);
     if (wasPlaying) {
       pendingFrameOffset = 0;
       const step = api.stepTime(media.currentTime, direction, rateInfo.fps, media.duration);
@@ -833,52 +810,6 @@
     updateVisibleHud();
   }
 
-  function jumpToEdge(edge) {
-    const media = getActiveVideo();
-    if (!media) {
-      showNotice('当前页面没有可控制的视频');
-      return;
-    }
-
-    pauseMedia(media);
-    const rateInfo = getFrameRateInfo(media);
-    const frameCount = getFrameCount(media, rateInfo.fps);
-    const lastFrameTime = Math.max(0, api.frameToTime(Math.max(0, frameCount - 1), rateInfo.fps));
-    const duration = Number(media.duration);
-    const target = edge === 'start'
-      ? 0
-      : Number.isFinite(duration) && duration > 0
-        ? Math.min(duration, lastFrameTime)
-        : lastFrameTime;
-
-    setMediaTime(media, target).then(() => {
-      updateVisibleHud();
-    });
-  }
-
-  function cycleRate(direction) {
-    const media = getActiveVideo();
-    if (!media) {
-      showNotice('当前页面没有可控制的视频');
-      return;
-    }
-    const baseRate = 1;
-    const maxRate = 2;
-    const step = 0.25;
-    const current = Number(media.playbackRate) || baseRate;
-
-    if (Math.abs(media.playbackRate - baseRate) < 0.05) {
-      fastForwardMultiplier = 1;
-    }
-    fastForwardMultiplier += direction > 0 ? step : -step;
-    fastForwardMultiplier = api.clamp(fastForwardMultiplier, baseRate, maxRate);
-
-    media.playbackRate = fastForwardMultiplier;
-    media.play().catch(() => {});
-    showNotice(`${direction > 0 ? '快进' : '倒回'} ${fastForwardMultiplier.toFixed(2)}×`);
-    updateVisibleHud();
-  }
-
   function isHoldPlaying(state = holdPlay) {
     return Boolean(state && state.activated && state.playStarted && holdPlay === state);
   }
@@ -891,7 +822,18 @@
     return `音量 ${Number(media.volume * 100).toFixed(0)}%${media.muted ? '（当前静音）' : ''}`;
   }
 
-  // Holding → is a continuous run of frame steps, so the HUD stays up and
+  function getPagePlaybackRate(media) {
+    const rates = [media.playbackRate, media.defaultPlaybackRate];
+    for (const value of rates) {
+      const rate = Number(value);
+      if (Number.isFinite(rate) && rate > 0) {
+        return rate;
+      }
+    }
+    return 1;
+  }
+
+  // Holding . starts review playback, so the HUD stays up and
   // tracks every presented frame until the key is released.
   function followHoldPlayback(state) {
     const media = state.media;
@@ -922,7 +864,8 @@
     state.activated = true;
     state.stepped = false;
     state.media = media;
-    state.previousRate = Number(media.playbackRate) || 1;
+    state.previousRate = getPagePlaybackRate(media);
+    state.rate = state.previousRate;
     state.startedAt = Number(media.currentTime) || 0;
     state.startedAtClock = performance.now();
     media.playbackRate = state.rate;
@@ -964,6 +907,7 @@
     const targetTime = api.resolveHoldPlayPosition(
       state.startedAt,
       (performance.now() - state.startedAtClock) / 1000,
+      state.rate,
     );
     const targetFrame = api.timeToFrame(targetTime, rateInfo.fps);
     setMediaTime(media, api.seekTimeForFrame(targetFrame, rateInfo.fps)).then(finish);
@@ -1030,44 +974,17 @@
     return Boolean(hud && target instanceof Node && hud.contains(target));
   }
 
-  // macOS keeps the ⌘/⌥ chords. On Windows/Linux Alt+←/→ is browser
-  // back/forward, so edges use Home/End there and speed uses Ctrl.
   function resolveShortcut(event) {
-    const command = IS_MAC ? event.metaKey : event.ctrlKey;
-    const option = IS_MAC && event.altKey;
-    const foreignModifier = IS_MAC ? event.ctrlKey : event.metaKey || event.altKey;
-    if (foreignModifier || (command && option)) {
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
       return null;
     }
-    const plain = !command && !option;
-    switch (event.code) {
-      case 'Space':
-        return plain && !event.shiftKey ? 'play-pause' : null;
-      case 'ArrowLeft':
-        return command ? 'rate-down' : option ? 'go-start' : 'step-back';
-      case 'ArrowRight':
-        return command ? 'rate-up' : option ? 'go-end' : 'step-forward';
-      case 'Home':
-        return plain ? 'go-start' : null;
-      case 'End':
-        return plain ? 'go-end' : null;
-      case 'KeyF':
-        return plain && !event.shiftKey ? 'fullscreen' : null;
-      default:
-        return null;
+    if (event.key === ',' || event.code === 'Comma') {
+      return 'step-back';
     }
-  }
-
-  function toggleFullscreen() {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-      return;
+    if (event.key === '.' || event.code === 'Period') {
+      return 'step-forward';
     }
-    const media = getActiveVideo();
-    const target = media && (media.closest('.video-player, [class*="player"]') || media);
-    if (target && target.requestFullscreen) {
-      target.requestFullscreen().catch(() => {});
-    }
+    return null;
   }
 
   function onKeyDown(event) {
@@ -1081,7 +998,7 @@
     if (!siteAllowed || !settings.enabled || event.isComposing) {
       return;
     }
-    if (holdPlay && event.repeat && event.code === 'ArrowRight') {
+    if (holdPlay && event.repeat && (event.key === '.' || event.code === 'Period')) {
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
@@ -1093,15 +1010,12 @@
       return;
     }
     const shortcut = resolveShortcut(event);
-    // Pages without media keep their own arrow-key scrolling and shortcuts.
+    // Pages without media keep their own keyboard shortcuts.
     if (!shortcut || !getActiveVideo()) {
       return;
     }
 
     switch (shortcut) {
-      case 'play-pause':
-        safeCommand(togglePlayback);
-        break;
       case 'step-back':
         safeCommand(() => queueFrameAction(() => stepFrameBatched(-1)));
         break;
@@ -1114,30 +1028,14 @@
             activated: false,
             stepped: false,
             media: getActiveVideo(),
-            rate: 1,
             timer: window.setTimeout(startHoldPlaybackTimer, api.HOLD_PLAY_DELAY_MS),
           };
           pendingFrameOffset = 0;
         }
         if (!holdPlay.stepped && !holdPlay.activated) {
           holdPlay.stepped = true;
-          safeCommand(() => queueFrameAction(() => stepFrameBatched(1)));
+          safeCommand(() => queueFrameAction(() => stepFrameBatched(1, true)));
         }
-        break;
-      case 'rate-down':
-        safeCommand(() => cycleRate(-1));
-        break;
-      case 'rate-up':
-        safeCommand(() => cycleRate(1));
-        break;
-      case 'go-start':
-        safeCommand(() => jumpToEdge('start'));
-        break;
-      case 'go-end':
-        safeCommand(() => jumpToEdge('end'));
-        break;
-      case 'fullscreen':
-        safeCommand(toggleFullscreen);
         break;
       default:
         return;
@@ -1159,7 +1057,7 @@
     if (disposed) {
       return;
     }
-    if (event.code === 'ArrowRight' && holdPlay) {
+    if ((event.key === '.' || event.code === 'Period') && holdPlay) {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!holdPlay.activated) {
@@ -1167,7 +1065,7 @@
         holdPlay = null;
         clearTimeout(state.timer);
         if (!state.stepped) {
-          safeCommand(() => queueFrameAction(() => stepFrameBatched(1)));
+          safeCommand(() => queueFrameAction(() => stepFrameBatched(1, true)));
         }
         return;
       }
@@ -1284,26 +1182,6 @@
           measureFrameRateSupported: typeof HTMLVideoElement !== 'undefined'
             && typeof HTMLVideoElement.prototype.requestVideoFrameCallback === 'function',
         });
-        break;
-      case 'play-pause':
-        safeCommand(togglePlayback);
-        sendResponse({ ok: true });
-        break;
-      case 'step-back':
-        safeCommand(() => queueFrameAction(() => stepFrameBatched(-1)));
-        sendResponse({ ok: true });
-        break;
-      case 'step-forward':
-        safeCommand(() => queueFrameAction(() => stepFrameBatched(1)));
-        sendResponse({ ok: true });
-        break;
-      case 'go-start':
-        jumpToEdge('start');
-        sendResponse({ ok: true });
-        break;
-      case 'go-end':
-        jumpToEdge('end');
-        sendResponse({ ok: true });
         break;
       case 'refresh-site':
         applySettings(settings);

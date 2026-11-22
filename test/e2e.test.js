@@ -62,7 +62,7 @@ function createFixtureServer() {
   });
 }
 
-test('FrameCue steps exactly one frame with arrow keys', async (t) => {
+test('FrameCue uses comma and period for review controls', async (t) => {
   // An unprivileged port keeps the suite runnable without root on Linux.
   const origin = process.env.FRAMECUE_ORIGIN || 'http://localhost:47831';
   const server = createFixtureServer();
@@ -137,10 +137,26 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     '总开关',
     'the header switch should be labelled as the master switch',
   );
+  assert.deepEqual(
+    await popup.locator('.shortcuts dl > div').evaluateAll((rows) => rows.map((row) => ({
+      keys: row.querySelector('dt').textContent.replace(/\s+/g, ' ').trim(),
+      description: row.querySelector('dd').textContent.trim(),
+    }))),
+    [
+      { keys: ', .', description: '停止并后退 / 前进一帧' },
+      { keys: '按住 .', description: '播放并跟随页面音量' },
+    ],
+    'popup should only advertise the comma and period shortcuts',
+  );
   assert.equal(
     await popup.locator('.open-section, #video-url').count(),
     0,
     'the old page-opening entry point must be removed',
+  );
+  assert.equal(
+    await popup.locator('#go-start, #step-back, #play-pause, #step-forward, #go-end').count(),
+    0,
+    'the popup must not include transport buttons',
   );
   await popup.close();
 
@@ -200,6 +216,28 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     true,
     'content script should enable an allowlisted site',
   );
+  const legacyShortcutResults = await page.evaluate(() => [
+    { key: ' ', code: 'Space' },
+    { key: 'ArrowLeft', code: 'ArrowLeft' },
+    { key: 'ArrowRight', code: 'ArrowRight' },
+    { key: 'Home', code: 'Home' },
+    { key: 'End', code: 'End' },
+    { key: 'f', code: 'KeyF' },
+  ].map(({ key, code }) => {
+    const event = new KeyboardEvent('keydown', {
+      key,
+      code,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+    return { code, prevented: event.defaultPrevented };
+  }));
+  assert.deepEqual(
+    legacyShortcutResults.filter((result) => result.prevented),
+    [],
+    'the extension must not intercept shortcuts other than comma and period',
+  );
 
   await page.evaluate(() => {
     const video = document.querySelector('#test-video');
@@ -215,8 +253,10 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     'normal playback must not create the auto HUD',
   );
   await page.locator('#test-video').click({ position: { x: 300, y: 180 } });
-  await page.keyboard.press('Space');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('.');
+  await page.waitForFunction(() => document.querySelector('#test-video').paused, null, {
+    timeout: 2000,
+  });
   await page.waitForFunction(
     () => document.querySelector('#framecue-hud')?.innerText.includes('实测'),
     null,
@@ -224,10 +264,6 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
   );
   const measuredLabel = await page.locator('#framecue-hud').innerText();
   assert.match(measuredLabel, /30 fps 实测/, `HUD should report measured fps: ${measuredLabel}`);
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => document.querySelector('#test-video').paused, null, {
-    timeout: 2000,
-  });
   await page.waitForTimeout(250);
   await page.locator('#test-video').click({ position: { x: 300, y: 180 } });
   await page.evaluate(() => {
@@ -244,12 +280,7 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     timeout: 2000,
   });
   await page.waitForTimeout(200);
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => document.querySelector('#test-video').paused, null, {
-    timeout: 2000,
-  });
-  await page.waitForTimeout(200);
-  await page.keyboard.down('ArrowRight');
+  await page.keyboard.down('.');
   await page.waitForTimeout(1500);
   const holdState = await page.evaluate(() => {
     const video = document.querySelector('#test-video');
@@ -260,8 +291,8 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
       volume: video.volume,
     };
   });
-  assert.equal(holdState.paused, false, 'holding right arrow should play normally');
-  assert.equal(holdState.playbackRate, 1, 'hold playback should use normal 1x speed');
+  assert.equal(holdState.paused, false, 'holding period should play normally without pausing first');
+  assert.equal(holdState.playbackRate, 4, 'hold playback should use the page playback rate');
   assert.equal(holdState.muted, false, 'hold playback must preserve the page mute state');
   assert.ok(Math.abs(holdState.volume - 0.35) < 0.01, 'hold playback must preserve volume');
   assert.match(
@@ -269,7 +300,7 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     /音量 35%/,
     'HUD should report volume rather than a playback mode label',
   );
-  // Holding → is continuous frame stepping: the HUD must stay up with the
+  // Holding . is continuous review playback: the HUD must stay up with the
   // volume note well past the 3 s auto-hide and keep counting frames.
   const readHoldHud = () => page.locator('#framecue-hud').evaluate((element) => ({
     opacity: getComputedStyle(element).opacity,
@@ -281,30 +312,30 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
   await page.waitForTimeout(2600);
   const lateHold = await readHoldHud();
   for (const sample of [earlyHold, lateHold]) {
-    assert.equal(sample.visible, true, 'HUD must stay visible while holding right arrow');
-    assert.equal(sample.opacity, '1', 'HUD must stay opaque while holding right arrow');
+    assert.equal(sample.visible, true, 'HUD must stay visible while holding period');
+    assert.equal(sample.opacity, '1', 'HUD must stay opaque while holding period');
     assert.match(sample.text, /音量 35%/, `HUD should keep the volume note: ${sample.text}`);
   }
   assert.ok(
     lateHold.frame > earlyHold.frame + 30,
     `HUD frame number should follow playback: ${earlyHold.frame} -> ${lateHold.frame}`,
   );
-  await page.keyboard.up('ArrowRight');
+  await page.keyboard.up('.');
   await page.waitForTimeout(1800);
   assert.equal(
     await page.evaluate(() => document.querySelector('#test-video').paused),
     true,
-    'releasing right arrow should pause playback',
+    'releasing period should pause playback',
   );
   // A short hold releases while the volume notice is still showing; the HUD
   // must still fade out instead of staying opaque.
-  await page.keyboard.down('ArrowRight');
+  await page.keyboard.down('.');
   await page.waitForFunction(
     () => /音量/.test(document.querySelector('#framecue-hud')?.innerText || ''),
     null,
     { timeout: 3000 },
   );
-  await page.keyboard.up('ArrowRight');
+  await page.keyboard.up('.');
   await page.waitForFunction(
     () => getComputedStyle(document.querySelector('#framecue-hud')).opacity === '0',
     null,
@@ -327,9 +358,8 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     video.currentTime = 1;
   });
   await page.waitForTimeout(250);
-  await page.keyboard.down('ArrowLeft');
+  await page.keyboard.press(',');
   await page.waitForTimeout(250);
-  await page.keyboard.up('ArrowLeft');
   await page.evaluate(() => {
     document.querySelector('#test-video').currentTime = 0.2;
   });
@@ -338,14 +368,13 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     document.querySelector('#test-video').currentTime = 2;
   });
   await page.waitForTimeout(250);
-  await page.keyboard.down('ArrowLeft');
-  await page.waitForTimeout(1000);
+  await page.keyboard.press(',');
+  await page.waitForTimeout(500);
   assert.equal(
     await page.evaluate(() => document.querySelector('#test-video').paused),
     true,
-    'holding left arrow should only step frames and never start reverse playback',
+    'comma should only step frames and never start reverse playback',
   );
-  await page.keyboard.up('ArrowLeft');
   await page.waitForTimeout(350);
   await page.evaluate(() => {
     const video = document.querySelector('#test-video');
@@ -365,16 +394,6 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
     });
   });
   await page.bringToFront();
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => document.querySelector('#test-video').currentTime > 0.15, null, {
-    timeout: 4000,
-  });
-  assert.equal(
-    await page.evaluate(() => document.querySelector('#test-video').paused),
-    false,
-    'Space should start playback',
-  );
-  await page.evaluate(() => document.querySelector('#test-video').pause());
   await page.bringToFront();
   const grantSettingsPage = await context.newPage();
   await grantSettingsPage.goto(`chrome-extension://${extensionId}/options.html`);
@@ -455,9 +474,9 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
       video.dataset.frameSteps = String(Number(video.dataset.frameSteps) + 1);
     });
   });
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('.');
   await page.waitForTimeout(250);
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('.');
   await page.waitForTimeout(1200);
   const hudVisible = await page.locator('#framecue-hud').count();
   assert.equal(hudVisible, 1, 'content script should add a frame HUD');
@@ -508,10 +527,10 @@ test('FrameCue steps exactly one frame with arrow keys', async (t) => {
       paused: video.paused,
     };
   });
-  assert.equal(afterForward.paused, true, 'arrow step should stop playback');
+  assert.equal(afterForward.paused, true, 'period step should stop playback');
   assert.ok(afterForward.frame >= 2, `expected at least 2 frame steps, got frame ${afterForward.frame}`);
 
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press(',');
   await page.waitForTimeout(450);
   const afterBack = await page.evaluate(() => Math.floor(document.querySelector('#test-video').currentTime * 30 + 1e-6));
   assert.ok(afterBack < afterForward.frame, `expected to step backward, got frame ${afterBack}`);

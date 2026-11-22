@@ -21,14 +21,14 @@ test('frame stepping remains accurate for a 15fps review recording', () => {
   assert.ok(Math.abs(stepBack.targetTime - 892 / 15) < 1e-9);
 });
 
-test('right arrow moves exactly one frame from inside a frame', () => {
+test('forward step moves exactly one frame from inside a frame', () => {
   const step = api.stepTime(1.04, 1, 30, 10);
   assert.equal(step.currentFrame, 31);
   assert.equal(step.targetFrame, 32);
   assert.ok(Math.abs(step.targetTime - 32 / 30) < 1e-9);
 });
 
-test('left arrow moves exactly one frame from inside a frame', () => {
+test('backward step moves exactly one frame from inside a frame', () => {
   const step = api.stepTime(1.04, -1, 30, 10);
   assert.equal(step.currentFrame, 31);
   assert.equal(step.targetFrame, 30);
@@ -129,5 +129,7 @@ test('frame count is complete for HLS once duration is known', () => {
 
 test('hold playback position advances from start time', () => {
   assert.equal(api.resolveHoldPlayPosition(10, 0.25), 10.25);
+  assert.equal(api.resolveHoldPlayPosition(10, 0.25, 2), 10.5);
+  assert.equal(api.resolveHoldPlayPosition(10, 0.25, 0), 10.25);
   assert.equal(api.resolveHoldPlayPosition(0, -1), 0);
 });

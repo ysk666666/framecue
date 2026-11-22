@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          if [ "$tag" = "$version" ] || [ -z "$version" ]; then
+            echo "::error::Release tags must look like v1.2.3 (got '${tag}')."
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync version into the manifests
+        run: bash scripts/set-version.sh "${{ steps.version.outputs.version }}"
+
+      - name: Build release artifacts
+        env:
+          FRAMECUE_FIREFOX_ID: ${{ vars.FRAMECUE_FIREFOX_ID }}
+        run: npm run build
+
+      - name: Verify artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          expected=(
+            "dist/framecue-Firefox-v${VERSION}.zip"
+            "dist/framecue-Chromium-v${VERSION}.zip"
+          )
+          for file in "${expected[@]}"; do
+            if [ ! -s "$file" ]; then
+              echo "::error::Missing release artifact: ${file}"
+              exit 1
+            fi
+            unzip -tq "$file"
+            unzip -Z1 "$file" | grep -qx manifest.json
+            echo "ok ${file} ($(wc -c < "$file") bytes)"
+          done
+          node - "$VERSION" <<'NODE'
+          const { execFileSync } = require('child_process');
+          const version = process.argv[2];
+          const chromiumManifest = JSON.parse(execFileSync(
+            'unzip',
+            ['-p', `dist/framecue-Chromium-v${version}.zip`, 'manifest.json'],
+          ));
+          const firefoxManifest = JSON.parse(execFileSync(
+            'unzip',
+            ['-p', `dist/framecue-Firefox-v${version}.zip`, 'manifest.json'],
+          ));
+          if (chromiumManifest.update_url || !chromiumManifest.background?.service_worker) {
+            throw new Error('Chromium ZIP is not store-ready');
+          }
+          if (firefoxManifest.browser_specific_settings?.gecko?.update_url) {
+            throw new Error('Firefox ZIP must not declare a self-hosted update URL');
+          }
+          NODE
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          assets=(
+            "dist/framecue-Firefox-v${VERSION}.zip"
+            "dist/framecue-Chromium-v${VERSION}.zip"
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --title "$TAG" --generate-notes
+          fi

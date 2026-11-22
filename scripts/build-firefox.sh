@@ -4,20 +4,23 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(node -p "require('$ROOT/manifest.json').version")"
 OUT="$ROOT/dist/firefox"
-ZIP="$ROOT/dist/framecue-firefox-v${VERSION}.zip"
-# Firefox needs a stable add-on id for storage.sync and optional host
-# permissions. Override it if you plan to publish this build.
+ZIP="$ROOT/dist/framecue-Firefox-v${VERSION}.zip"
+
+# Firefox needs a stable add-on id for storage.sync and optional host permissions.
+# Override it with the id assigned by the Firefox Add-ons store if needed.
 GECKO_ID="${FRAMECUE_FIREFOX_ID:-framecue@framecue.local}"
+
+STAGE="$(mktemp -d)"
 
 cleanup() {
   rm -rf "$STAGE"
 }
-
-STAGE="$(mktemp -d)"
 trap cleanup EXIT
 
 mkdir -p "$OUT"
 find "$OUT" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+rm -f "$ROOT"/dist/framecue-firefox-v*.zip "$ROOT"/dist/framecue-Firefox-v*.zip
+rm -f "$ROOT/dist/update_Firefox.json"
 
 # The unpacked directory is what about:debugging and web-ext load.
 rsync -a \
@@ -42,6 +45,12 @@ const fs = require('fs');
 const [source, target, geckoId] = process.argv.slice(2);
 const chromeManifest = JSON.parse(fs.readFileSync(source, 'utf8'));
 
+const gecko = {
+  id: geckoId,
+  // optional_host_permissions needs Firefox 116 or newer.
+  strict_min_version: '116.0',
+};
+
 const manifest = {
   manifest_version: chromeManifest.manifest_version,
   name: chromeManifest.name,
@@ -64,11 +73,7 @@ const manifest = {
   icons: chromeManifest.icons,
   options_ui: chromeManifest.options_ui,
   browser_specific_settings: {
-    gecko: {
-      id: geckoId,
-      // optional_host_permissions needs Firefox 116 or newer.
-      strict_min_version: '116.0',
-    },
+    gecko,
   },
 };
 

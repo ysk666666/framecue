@@ -201,8 +201,11 @@
     return !Number.isFinite(available) || available <= total + 1;
   }
 
-  function resolveHoldPlayPosition(currentTime, elapsedSeconds) {
-    return Math.max(0, Number(currentTime) || 0) + Math.max(0, Number(elapsedSeconds) || 0);
+  function resolveHoldPlayPosition(currentTime, elapsedSeconds, playbackRate = 1) {
+    const rate = Number(playbackRate);
+    const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    return Math.max(0, Number(currentTime) || 0)
+      + Math.max(0, Number(elapsedSeconds) || 0) * safeRate;
   }
 
   function normalizeSettings(value) {

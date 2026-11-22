@@ -2,7 +2,7 @@
 
 // Loads the Firefox build into a real Firefox through WebDriver BiDi, then
 // checks that an allowlisted page receives the content script and that the
-// ArrowRight shortcut advances exactly one frame.
+// period shortcut advances exactly one frame.
 //
 // Requirements: Firefox 116+ and Node 22+ (for the built-in WebSocket client).
 // Point FRAMECUE_FIREFOX at the binary when Firefox is not installed in a
@@ -22,6 +22,7 @@ const EXTENSION_PATH = path.join(ROOT, 'dist', 'firefox');
 const PAGE_PORT = 47833;
 const DEBUG_PORT = 9251;
 const PAGE_URL = `http://localhost:${PAGE_PORT}/video`;
+const PERIOD = '.';
 const ARROW_RIGHT = '\uE014';
 const CONTENT_TYPES = { '.html': 'text/html; charset=utf-8', '.mp4': 'video/mp4' };
 
@@ -282,8 +283,8 @@ user_pref("media.autoplay.default", 0);
       type: 'key',
       id: 'keyboard',
       actions: [
-        { type: 'keyDown', value: ARROW_RIGHT },
-        { type: 'keyUp', value: ARROW_RIGHT },
+        { type: 'keyDown', value: PERIOD },
+        { type: 'keyUp', value: PERIOD },
       ],
     }],
   });
@@ -294,6 +295,125 @@ user_pref("media.autoplay.default", 0);
     frame: Math.floor(document.querySelector('#test-video').currentTime * 30 + 1e-6),
     hud: document.querySelectorAll('#framecue-hud').length,
   })`));
-  assert.equal(state.frame, 31, `ArrowRight should land on frame 31: ${JSON.stringify(state)}`);
+  assert.equal(state.frame, 31, `Period should land on frame 31: ${JSON.stringify(state)}`);
   assert.equal(state.hud, 1, 'the frame HUD should be created for the allowlisted page');
+
+  await evaluate(`(async () => {
+    const video = document.querySelector('#test-video');
+    video.currentTime = 1;
+    video.volume = 0.35;
+    video.muted = false;
+    await video.play();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return video.currentTime;
+  })()`);
+  const beforePlayingStep = JSON.parse(await evaluate(`JSON.stringify({
+    frame: Math.floor(document.querySelector('#test-video').currentTime * 30 + 1e-6),
+  })`));
+  await session.send('input.performActions', {
+    context: tab.context,
+    actions: [{
+      type: 'key',
+      id: 'keyboard',
+      actions: [
+        { type: 'keyDown', value: PERIOD },
+        { type: 'keyUp', value: PERIOD },
+      ],
+    }],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const afterPlayingStep = JSON.parse(await evaluate(`JSON.stringify({
+    currentTime: document.querySelector('#test-video').currentTime,
+    frame: Math.floor(document.querySelector('#test-video').currentTime * 30 + 1e-6),
+    paused: document.querySelector('#test-video').paused,
+  })`));
+  assert.equal(
+    afterPlayingStep.paused,
+    true,
+    `Period should pause a playing video before stepping: ${JSON.stringify(afterPlayingStep)}`,
+  );
+  assert.ok(
+    afterPlayingStep.frame > beforePlayingStep.frame
+      && afterPlayingStep.frame <= beforePlayingStep.frame + 3,
+    `Period should advance one frame while playing: ${JSON.stringify({ beforePlayingStep, afterPlayingStep })}`,
+  );
+
+  await evaluate(`(async () => {
+    const video = document.querySelector('#test-video');
+    video.currentTime = 0.2;
+    video.playbackRate = 1.75;
+    video.volume = 0.35;
+    video.muted = false;
+    await video.play();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return video.currentTime;
+  })()`);
+  await session.send('input.performActions', {
+    context: tab.context,
+    actions: [{
+      type: 'key',
+      id: 'keyboard',
+      actions: [{ type: 'keyDown', value: PERIOD }],
+    }],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  const holdState = JSON.parse(await evaluate(`JSON.stringify({
+    paused: document.querySelector('#test-video').paused,
+    playbackRate: document.querySelector('#test-video').playbackRate,
+    muted: document.querySelector('#test-video').muted,
+    volume: document.querySelector('#test-video').volume,
+    hud: document.querySelector('#framecue-hud').innerText,
+  })`));
+  assert.equal(holdState.paused, false, 'holding Period should keep the video playing');
+  assert.equal(holdState.playbackRate, 1.75, 'hold playback should use the page playback rate');
+  assert.equal(holdState.muted, false, 'hold playback should preserve page mute state');
+  assert.ok(Math.abs(holdState.volume - 0.35) < 0.01, 'hold playback should preserve page volume');
+  assert.match(holdState.hud, /音量 35%/, 'HUD should show the page volume while holding Period');
+
+  await session.send('input.performActions', {
+    context: tab.context,
+    actions: [{
+      type: 'key',
+      id: 'keyboard',
+      actions: [{ type: 'keyUp', value: PERIOD }],
+    }],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const releasedState = JSON.parse(await evaluate(`JSON.stringify({
+    currentTime: document.querySelector('#test-video').currentTime,
+    paused: document.querySelector('#test-video').paused,
+  })`));
+  assert.equal(releasedState.paused, true, 'releasing Period should pause the video');
+  assert.ok(
+    releasedState.currentTime > 0.5,
+    `hold release should keep the advanced position: ${JSON.stringify(releasedState)}`,
+  );
+
+  await evaluate(`(() => {
+    const video = document.querySelector('#test-video');
+    video.pause();
+    video.currentTime = 3;
+    return video.currentTime;
+  })()`);
+  await session.send('input.performActions', {
+    context: tab.context,
+    actions: [{
+      type: 'key',
+      id: 'keyboard',
+      actions: [
+        { type: 'keyDown', value: ARROW_RIGHT },
+        { type: 'keyUp', value: ARROW_RIGHT },
+      ],
+    }],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const legacyShortcutState = JSON.parse(await evaluate(`JSON.stringify({
+    currentTime: document.querySelector('#test-video').currentTime,
+    paused: document.querySelector('#test-video').paused,
+  })`));
+  assert.equal(legacyShortcutState.paused, true, 'ArrowRight must remain page-owned');
+  assert.ok(
+    Math.abs(legacyShortcutState.currentTime - 3) < 0.04,
+    `ArrowRight must not step frames: ${JSON.stringify(legacyShortcutState)}`,
+  );
 });

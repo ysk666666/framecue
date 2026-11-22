@@ -6,12 +6,6 @@
   const permissions = globalThis.FrameCuePermissions;
   const browserApi = globalThis.FrameCueApi;
   const STORAGE_KEY = 'frameCueSettings';
-  const IS_MAC = /mac/i.test(
-    (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '',
-  );
-  const SHORTCUT_LABELS = IS_MAC
-    ? { goStart: 'Option+←', goEnd: 'Option+→', rateDown: '⌘←', rateUp: '⌘→', edge: ['⌥←', '⌥→'] }
-    : { goStart: 'Home', goEnd: 'End', rateDown: 'Ctrl+←', rateUp: 'Ctrl+→', edge: ['Home', 'End'] };
 
   const elements = {
     enabled: document.getElementById('enabled'),
@@ -22,11 +16,6 @@
     fpsSource: document.getElementById('fps-source'),
     fps: document.getElementById('fps'),
     rateButtons: Array.from(document.querySelectorAll('[data-rate-mode]')),
-    goStart: document.getElementById('go-start'),
-    stepBack: document.getElementById('step-back'),
-    playPause: document.getElementById('play-pause'),
-    stepForward: document.getElementById('step-forward'),
-    goEnd: document.getElementById('go-end'),
     siteSection: document.getElementById('site-section'),
     siteHost: document.getElementById('site-host'),
     siteToggle: document.getElementById('site-toggle'),
@@ -74,18 +63,6 @@
     elements.statusText.textContent = text;
   }
 
-  function setTransportEnabled(enabled) {
-    [
-      elements.goStart,
-      elements.stepBack,
-      elements.playPause,
-      elements.stepForward,
-      elements.goEnd,
-    ].forEach((button) => {
-      button.disabled = !enabled;
-    });
-  }
-
   async function applyMasterSwitch(enabled) {
     settings = api.normalizeSettings({ ...settings, enabled });
     await saveSettings();
@@ -96,7 +73,6 @@
       setStatus('', '总开关已关闭');
       elements.frameReadout.hidden = true;
       elements.timeReadout.textContent = '页面快捷键不受扩展影响';
-      setTransportEnabled(false);
     } else {
       await applyConfigurationToTab(activeTab && activeTab.id);
       refreshStatus();
@@ -148,22 +124,11 @@
         : '加入白名单并授权后，页面才会加载扩展。';
   }
 
-  function renderShortcutLabels() {
-    elements.goStart.title = `跳到片头（${SHORTCUT_LABELS.goStart}）`;
-    elements.goEnd.title = `跳到片尾（${SHORTCUT_LABELS.goEnd}）`;
-    document.querySelectorAll('[data-shortcut]').forEach((element) => {
-      const [key, index] = element.dataset.shortcut.split(':');
-      const label = SHORTCUT_LABELS[key];
-      element.textContent = Array.isArray(label) ? label[Number(index) || 0] : label;
-    });
-  }
-
   function renderStatus(response) {
     if (!response) {
       setStatus('', '当前页面无法连接扩展');
       elements.frameReadout.hidden = true;
       elements.timeReadout.textContent = '刷新页面后重试';
-      setTransportEnabled(false);
       return;
     }
 
@@ -171,7 +136,6 @@
       setStatus('', '总开关已关闭');
       elements.frameReadout.hidden = true;
       elements.timeReadout.textContent = '页面快捷键不受扩展影响';
-      setTransportEnabled(false);
       return;
     }
 
@@ -179,7 +143,6 @@
       setStatus('error', '此网站尚未启用');
       elements.frameReadout.hidden = true;
       elements.timeReadout.textContent = '在“当前网站”中启用后生效';
-      setTransportEnabled(false);
       return;
     }
 
@@ -187,7 +150,6 @@
       setStatus('error', `已启用，尚未找到视频${response.hls ? ' · HLS' : ''}`);
       elements.frameReadout.hidden = true;
       elements.timeReadout.textContent = response.hls ? '已检测到 HLS，请开始播放' : '请等待播放器加载完成';
-      setTransportEnabled(false);
       return;
     }
 
@@ -206,9 +168,6 @@
         : response.fpsSource === 'custom'
           ? `固定 ${response.fps} fps`
           : `兜底 ${response.fps} fps`;
-    elements.playPause.textContent = response.paused ? '▶' : 'Ⅱ';
-    elements.playPause.setAttribute('aria-label', response.paused ? '播放' : '暂停');
-    setTransportEnabled(true);
   }
 
   function refreshStatus() {
@@ -220,7 +179,6 @@
       setStatus('', '此网站尚未启用');
       elements.frameReadout.hidden = true;
       elements.timeReadout.textContent = '在“当前网站”中启用后生效';
-      setTransportEnabled(false);
       return;
     }
     chrome.tabs.sendMessage(activeTab.id, { type: 'framecue-command', command: 'status' }, (response) => {
@@ -230,21 +188,18 @@
           setStatus('error', '此网站需要重新授权');
           elements.frameReadout.hidden = true;
           elements.timeReadout.textContent = '点击“授权此网站”后生效';
-          setTransportEnabled(false);
           return;
         }
         if (hostname && rules.matchesAny(settings.allowlist, hostname)) {
           setStatus('error', '此网站已启用，但页面尚未重载');
           elements.frameReadout.hidden = true;
           elements.timeReadout.textContent = '刷新一次页面即可生效';
-          setTransportEnabled(false);
           return;
         }
         if (hostname) {
           setStatus('', '此网站尚未启用');
           elements.frameReadout.hidden = true;
           elements.timeReadout.textContent = '在“当前网站”中启用后生效';
-          setTransportEnabled(false);
           return;
         }
         renderStatus(null);
@@ -292,18 +247,6 @@
     });
     const state = await readSiteState(tabId);
     return Boolean(state && state.siteAllowed);
-  }
-
-  function sendCommand(command) {
-    if (!activeTab) {
-      return;
-    }
-    chrome.tabs.sendMessage(activeTab.id, { type: 'framecue-command', command }, () => {
-      if (chrome.runtime.lastError) {
-        return;
-      }
-      window.setTimeout(refreshStatus, 100);
-    });
   }
 
   function scheduleRefresh() {
@@ -418,7 +361,6 @@
     });
   });
 
-  renderShortcutLabels();
   elements.enabled.addEventListener('change', () => {
     void applyMasterSwitch(elements.enabled.checked);
   });
@@ -437,11 +379,6 @@
     void saveSettings();
   });
 
-  elements.stepBack.addEventListener('click', () => sendCommand('step-back'));
-  elements.stepForward.addEventListener('click', () => sendCommand('step-forward'));
-  elements.playPause.addEventListener('click', () => sendCommand('play-pause'));
-  elements.goStart.addEventListener('click', () => sendCommand('go-start'));
-  elements.goEnd.addEventListener('click', () => sendCommand('go-end'));
   elements.siteToggle.addEventListener('click', toggleCurrentSite);
   elements.siteBlock.addEventListener('click', blockCurrentSite);
   elements.openOptions.addEventListener('click', () => chrome.runtime.openOptionsPage());

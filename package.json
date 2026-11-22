@@ -7,23 +7,25 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/framecue.git"
+    "url": "https://github.com/ysk666666/framecue.git"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/framecue/issues"
+    "url": "https://github.com/ysk666666/framecue/issues"
   },
-  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/framecue#readme",
+  "homepage": "https://github.com/ysk666666/framecue#readme",
   "scripts": {
     "test": "node --test test/frame-math.test.js test/site-rules.test.js test/permissions.test.js",
     "test:e2e": "node --test --test-timeout=60000 test/e2e.test.js",
     "test:e2e:firefox": "node --test --test-timeout=90000 test/e2e-firefox.test.js",
-    "build": "bash scripts/build.sh",
+    "build": "bash scripts/build-release.sh",
+    "build:chromium": "bash scripts/build-chromium.sh",
     "build:firefox": "bash scripts/build-firefox.sh",
-    "package": "bash scripts/build.sh"
+    "release:build": "bash scripts/build-release.sh",
+    "version:set": "bash scripts/set-version.sh"
   },
   "type": "commonjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "playwright": "^1.58.2"
